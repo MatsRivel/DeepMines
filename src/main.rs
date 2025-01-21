@@ -2,7 +2,7 @@ mod pos;
 use std::{env, ops::DerefMut, time::Duration};
 
 use avian2d::prelude::*;
-use bevy::{input::keyboard::{Key, KeyboardInput}, math::VectorSpace, prelude::*, render::sync_world::SyncToRenderWorld};
+use bevy::{ecs::observer::TriggerEvent, input::keyboard::{Key, KeyboardInput}, math::VectorSpace, prelude::*, render::sync_world::SyncToRenderWorld};
 use bevy_ecs_tilemap::prelude::*;
 use bevy_tnua::prelude::*;
 use bevy_tnua_avian2d::TnuaAvian2dPlugin;
@@ -33,6 +33,7 @@ fn main() {
         // .add_systems(FixedUpdate, swap_tiles)
         // .add_systems(FixedUpdate, animate_stuff)
         .add_systems(FixedUpdate, animate_stuff)
+        .add_systems(FixedUpdate, start_walk)
 
         .run();
 }
@@ -42,75 +43,70 @@ const ATLAS_FILE_IDLE: &str = r"PenUsbMic\Small Monster\small moidle.png";
 const ATLAS_FILE_WALK: &str = r"PenUsbMic\Small Monster\small morun.png";
 pub fn setup(mut commands: Commands, mut assets: Res<AssetServer>) {
     commands.spawn((MyCamera,Transform::from_xyz(0.0, 0.0, 0.0)));
-    {
-        let textue_atlas_layout = assets.add(TextureAtlasLayout::from_grid(
-            UVec2::new(28, 39),//UVec2::new(82, 39),
-            1,
-            6,
-            None,//Some(UVec2::new(0, 234-39)),
-            None,
-        ));
-        let animation_config = AnimationConfig::new(0, 5, 10);
-        let texture_atlas = TextureAtlas {
-            layout: textue_atlas_layout,
-            index: animation_config.first_sprite_index,
-        };
-        let bundle = (
-            Sprite {
-                image: assets.load(ATLAS_FILE_IDLE),
-                texture_atlas: Some(texture_atlas),
-                ..default()
-            },
-            animation_config,
-            Transform::from_translation(Vec3::new(-50.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
-            Visibility::Visible,
-            SyncToRenderWorld,
-        );
-        commands.spawn(bundle);
+    let textue_atlas_layout = assets.add(TextureAtlasLayout::from_grid(
+        UVec2::new(28, 39),//UVec2::new(82, 39),
+        1,
+        6,
+        None,//Some(UVec2::new(0, 234-39)),
+        None,
+    ));
+    let animation_config = AnimationConfig::new(0, 5, 10);
+    let texture_atlas = TextureAtlas {
+        layout: textue_atlas_layout,
+        index: animation_config.first_sprite_index,
+    };
+    let idle_bundle = (
+        Sprite {
+            image: assets.load(ATLAS_FILE_IDLE),
+            texture_atlas: Some(texture_atlas.clone()),
+            ..default()
+        },
+        animation_config.clone(),
+        Transform::from_translation(Vec3::new(-75.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
+        Visibility::Visible,
+        SyncToRenderWorld,
+        MossMonsterIdle
+    );
+    commands.spawn(idle_bundle);
 
-    }
-    {
-        let textue_atlas_layout = assets.add(TextureAtlasLayout::from_grid(
-            UVec2::new(28, 39),//UVec2::new(82, 39),
-            1,
-            6,
-            None,//Some(UVec2::new(0, 234-39)),
-            None,
-        ));
-        let animation_config = AnimationConfig::new(0, 5, 10);
-        let texture_atlas = TextureAtlas {
-            layout: textue_atlas_layout,
-            index: animation_config.first_sprite_index,
-        };
-        let bundle = (
-            Sprite {
-                image: assets.load(ATLAS_FILE_WALK),
-                texture_atlas: Some(texture_atlas),
-                ..default()
-            },
-            animation_config,
-            Transform::from_translation(Vec3::new(50.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
-            Visibility::Visible,
-            SyncToRenderWorld,
-            MossMonsterWalk
-        );
-        commands.spawn(bundle);
+
+    let walking_bundle = (
+        Sprite {
+            image: assets.load(ATLAS_FILE_WALK),
+            texture_atlas: Some(texture_atlas.clone()),
+            ..default()
+        },
+        animation_config.clone(),
+        Transform::from_translation(Vec3::new(75.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
+        Visibility::Visible,
+        SyncToRenderWorld,
+        MossMonsterWalk
+    );
+    commands.spawn(walking_bundle);
+
+    let variation_bundle = (
+        Sprite {
+            image: assets.load(ATLAS_FILE_WALK),
+            texture_atlas: Some(texture_atlas),
+            ..default()
+        },
+        animation_config,
+        Transform::from_translation(Vec3::new(0.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
+        Visibility::Visible,
+        SyncToRenderWorld,
+        MossMonsterVary
+    );
+    commands.spawn(variation_bundle);
+}
+
+pub fn start_walk(mut event_reader: EventReader<KeyboardInput>){
+    for keyboard_input in event_reader.read().filter(|kb| kb.key_code == KeyCode::KeyD){
+        println!("HELO!");
+
     }
 }
 
-
-pub fn swap_tiles(time: Res<Time>, mut objs: Query<&mut Sprite>){
-    // if (time.elapsed_secs()) % 3.0 != 0.0{
-    //     return
-    // }
-    println!("SWAP: {}", time.elapsed_secs());
-    for mut sprite in objs.iter_mut(){
-        if let Some(atlas) = &mut sprite.texture_atlas{
-            atlas.index = (atlas.index+1) % 6;
-        }
-    }   
-}
-pub fn animate_stuff(time: Res<Time>, mut query: Query<(&mut AnimationConfig, &mut Sprite)>){
+pub fn animate_stuff(time: Res<Time>, mut query: Query<(&mut AnimationConfig, &mut Sprite),Without<MossMonsterVary>>){
     for (mut config, mut sprite) in &mut query{
         // How long the current sprite has been active.
         config.frame_timer.tick(time.delta());
@@ -126,12 +122,15 @@ pub fn animate_stuff(time: Res<Time>, mut query: Query<(&mut AnimationConfig, &m
         }
     }
 }
+
 #[derive(Component)]
 pub struct MossMonsterWalk;
 #[derive(Component)]
 pub struct MossMonsterIdle;
-
 #[derive(Component)]
+pub struct MossMonsterVary;
+
+#[derive(Component,Clone)]
 pub struct AnimationConfig {
     first_sprite_index: usize,
     last_sprite_index: usize,
