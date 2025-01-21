@@ -1,5 +1,5 @@
 mod pos;
-use std::{env, ops::DerefMut, time::Duration};
+use std::{any::Any, env, ops::DerefMut, time::Duration};
 
 use avian2d::prelude::*;
 use bevy::{ecs::observer::TriggerEvent, input::keyboard::{Key, KeyboardInput}, math::VectorSpace, prelude::*, render::sync_world::SyncToRenderWorld};
@@ -41,7 +41,7 @@ fn main() {
 // const ATLAS_FILE: &str = "Jotem spritesheet.png";
 const ATLAS_FILE_IDLE: &str = r"PenUsbMic\Small Monster\small moidle.png";
 const ATLAS_FILE_WALK: &str = r"PenUsbMic\Small Monster\small morun.png";
-pub fn setup(mut commands: Commands, mut assets: Res<AssetServer>) {
+pub fn setup(mut commands: Commands, assets: Res<AssetServer>) {
     commands.spawn((MyCamera,Transform::from_xyz(0.0, 0.0, 0.0)));
     let textue_atlas_layout = assets.add(TextureAtlasLayout::from_grid(
         UVec2::new(28, 39),//UVec2::new(82, 39),
@@ -50,17 +50,19 @@ pub fn setup(mut commands: Commands, mut assets: Res<AssetServer>) {
         None,//Some(UVec2::new(0, 234-39)),
         None,
     ));
+    let id = textue_atlas_layout.id();
     let animation_config = AnimationConfig::new(0, 5, 10);
     let texture_atlas = TextureAtlas {
         layout: textue_atlas_layout,
         index: animation_config.first_sprite_index,
     };
+    let idle_sprite = Sprite {
+        image: assets.load(ATLAS_FILE_IDLE),
+        texture_atlas: Some(texture_atlas.clone()),
+        ..default()
+    };
     let idle_bundle = (
-        Sprite {
-            image: assets.load(ATLAS_FILE_IDLE),
-            texture_atlas: Some(texture_atlas.clone()),
-            ..default()
-        },
+        idle_sprite,
         animation_config.clone(),
         Transform::from_translation(Vec3::new(-75.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
         Visibility::Visible,
@@ -69,13 +71,13 @@ pub fn setup(mut commands: Commands, mut assets: Res<AssetServer>) {
     );
     commands.spawn(idle_bundle);
 
-
+    let walking_sprite = Sprite {
+        image: assets.load(ATLAS_FILE_WALK),
+        texture_atlas: Some(texture_atlas.clone()),
+        ..default()
+    };
     let walking_bundle = (
-        Sprite {
-            image: assets.load(ATLAS_FILE_WALK),
-            texture_atlas: Some(texture_atlas.clone()),
-            ..default()
-        },
+        walking_sprite,
         animation_config.clone(),
         Transform::from_translation(Vec3::new(75.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
         Visibility::Visible,
@@ -83,13 +85,13 @@ pub fn setup(mut commands: Commands, mut assets: Res<AssetServer>) {
         MossMonsterWalk
     );
     commands.spawn(walking_bundle);
-
+    let var_sprite = Sprite {
+        image: assets.load(ATLAS_FILE_WALK),
+        texture_atlas: Some(texture_atlas),
+        ..default()
+    };
     let variation_bundle = (
-        Sprite {
-            image: assets.load(ATLAS_FILE_WALK),
-            texture_atlas: Some(texture_atlas),
-            ..default()
-        },
+        var_sprite,
         animation_config,
         Transform::from_translation(Vec3::new(0.0,0.0,0.0)).with_scale(Vec3::splat(3.0)),
         Visibility::Visible,
@@ -99,7 +101,7 @@ pub fn setup(mut commands: Commands, mut assets: Res<AssetServer>) {
     commands.spawn(variation_bundle);
 }
 
-pub fn start_walk(mut event_reader: EventReader<KeyboardInput>){
+pub fn start_walk(mut event_reader: EventReader<KeyboardInput>, assets: Res<AssetServer>){
     for keyboard_input in event_reader.read().filter(|kb| kb.key_code == KeyCode::KeyD){
         println!("HELO!");
 
