@@ -1,20 +1,14 @@
 mod pos;
-use std::{any::Any, env, ops::DerefMut, time::Duration};
+use std::time::Duration;
 
 use avian2d::prelude::*;
 use bevy::{
-    ecs::observer::TriggerEvent,
-    input::keyboard::{Key, KeyboardInput},
-    math::VectorSpace,
-    prelude::*,
-    render::{sync_world::SyncToRenderWorld, view::WindowRenderPlugin},
-    window::{WindowResized, WindowResolution},
+    input::keyboard::KeyboardInput, prelude::*, render::sync_world::SyncToRenderWorld,
+    window::WindowResolution,
 };
-use bevy_ecs_tilemap::prelude::*;
 use bevy_tnua::prelude::*;
 use bevy_tnua_avian2d::TnuaAvian2dPlugin;
 use camera::MyCamera;
-use tile::Tile;
 pub const TILE_WIDTH: f32 = 16.0;
 pub const TRENCH_WIDT: f32 = 0.0;
 pub const STEP_SIZE: f32 = TILE_WIDTH + TRENCH_WIDT;
@@ -115,19 +109,22 @@ pub fn setup(mut commands: Commands, assets: Res<AssetServer>) {
     commands.spawn(variation_bundle);
 }
 
-pub fn key_trigger_animation(mut commands: Commands, mut event_reader: EventReader<KeyboardInput>, entity_query: Query<(Entity, &mut Sprite), With<MossMonsterVary>>,  mut assets: Res<AssetServer>) {
-    for kb in event_reader
-        .read()
-    {
+pub fn key_trigger_animation(
+    mut commands: Commands,
+    mut event_reader: EventReader<KeyboardInput>,
+    entity_query: Query<(Entity, &mut Sprite), With<MossMonsterVary>>,
+    assets: Res<AssetServer>,
+) {
+    for kb in event_reader.read() {
         let kb_code = kb.key_code;
-        let (entity, sprite)= entity_query.single();
-        if let Some(texture_atlas) = &sprite.texture_atlas{
-            let next_state = match kb_code{
+        let (entity, sprite) = entity_query.single();
+        if let Some(texture_atlas) = &sprite.texture_atlas {
+            let next_state = match kb_code {
                 KeyCode::KeyD => MossMonsterState::WalkRight,
                 KeyCode::KeyA => MossMonsterState::WalkLeft,
                 KeyCode::KeyS => MossMonsterState::Idle,
                 KeyCode::KeyW => MossMonsterState::Attack,
-                _ => continue
+                _ => continue,
             };
             // This controls when to change sprites and when to flip sprites.
             let flip = next_state.flip_x_state().unwrap_or(sprite.flip_x);
@@ -144,10 +141,7 @@ pub fn key_trigger_animation(mut commands: Commands, mut event_reader: EventRead
     }
 }
 
-pub fn animate_stuff(
-    time: Res<Time>,
-    mut query: Query<(&mut AnimationConfig, &mut Sprite)>,
-) {
+pub fn animate_stuff(time: Res<Time>, mut query: Query<(&mut AnimationConfig, &mut Sprite)>) {
     for (mut config, mut sprite) in &mut query {
         // How long the current sprite has been active.
         config.frame_timer.tick(time.delta());
@@ -170,56 +164,60 @@ pub struct MossMonsterWalk;
 #[derive(Component)]
 pub struct MossMonsterIdle;
 
-#[derive(Clone,Copy,Debug,PartialEq, Eq)]
-pub enum MossMonsterState{
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MossMonsterState {
     WalkLeft,
     WalkRight,
     Idle,
-    Attack
-}impl MossMonsterState{
-    fn as_source_file<'a>(&'a self)->&'a str{
-        match self{
+    Attack,
+}
+impl MossMonsterState {
+    fn as_source_file(&self) -> &str {
+        match self {
             Self::WalkLeft | Self::WalkRight => ATLAS_FILE_WALK,
             Self::Idle => ATLAS_FILE_IDLE,
             Self::Attack => ATLAS_FILE_ATTACK,
         }
     }
-    fn new_file_needed<'a>(&'a self, other: &'a Self)->Option<&'a str>{
-        if self.as_source_file() == other.as_source_file(){
+    fn new_file_needed<'a>(&'a self, other: &'a Self) -> Option<&'a str> {
+        if self.as_source_file() == other.as_source_file() {
             None
-        }else{
-            Some(&other.as_source_file())
+        } else {
+            Some(other.as_source_file())
         }
     }
-    fn flip_x_state<'a>(&'a self)->Option<bool>{
-        match self{
+    fn flip_x_state(&self) -> Option<bool> {
+        match self {
             Self::WalkLeft => Some(true),
             Self::WalkRight => Some(false),
             Self::Idle | Self::Attack => None,
         }
     }
-    pub fn to_data<'a>(&'a self, other: &'a Self)->(Option<bool>, Option<&'a str>){
+    pub fn to_data<'a>(&'a self, other: &'a Self) -> (Option<bool>, Option<&'a str>) {
         (other.flip_x_state(), self.new_file_needed(other))
     }
 }
 
 #[derive(Component)]
-pub struct MossMonsterVary{
-    state: MossMonsterState
-}impl MossMonsterVary{
-    pub fn new()->Self{
-        Self { state: MossMonsterState::Idle }
+pub struct MossMonsterVary {
+    state: MossMonsterState,
+}
+impl MossMonsterVary {
+    pub fn new() -> Self {
+        Self {
+            state: MossMonsterState::Idle,
+        }
     }
-    pub fn walk_left<'a>(&'a mut self)->(Option<bool>, Option<&'a str>){
+    pub fn walk_left(&mut self) -> (Option<bool>, Option<&str>) {
         self.state.to_data(&MossMonsterState::WalkLeft)
     }
-    pub fn walk_idle<'a>(&'a mut self)->(Option<bool>, Option<&'a str>){
+    pub fn walk_idle(&mut self) -> (Option<bool>, Option<&str>) {
         self.state.to_data(&MossMonsterState::Idle)
     }
-    pub fn walk_right<'a>(&'a mut self)->(Option<bool>, Option<&'a str>){
+    pub fn walk_right(&mut self) -> (Option<bool>, Option<&str>) {
         self.state.to_data(&MossMonsterState::WalkRight)
     }
-    pub fn attack<'a>(&'a mut self)->(Option<bool>, Option<&'a str>){
+    pub fn attack(&mut self) -> (Option<bool>, Option<&str>) {
         self.state.to_data(&MossMonsterState::Attack)
     }
 }
