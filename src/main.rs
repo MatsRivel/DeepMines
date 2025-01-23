@@ -1,10 +1,9 @@
 mod pos;
-use std::time::Duration;
+use std::{any::{Any, TypeId}, time::Duration};
 
 use avian2d::prelude::*;
 use bevy::{
-    input::keyboard::KeyboardInput, prelude::*, render::sync_world::SyncToRenderWorld,
-    window::WindowResolution,
+    asset::{ErasedAssetLoader, LoadedFolder}, image::{CompressedImageFormats, ImageLoader}, input::keyboard::KeyboardInput, prelude::*, render::{render_resource::TextureFormat, sync_world::SyncToRenderWorld}, window::WindowResolution
 };
 use bevy_tnua::prelude::*;
 use bevy_tnua_avian2d::TnuaAvian2dPlugin;
@@ -36,70 +35,125 @@ fn main() {
         .insert_resource(ClearColor(SKY_COLOR))
         .init_gizmo_group::<MyGizmos>()
         .insert_resource(Time::<Fixed>::from_hz(30.0)) //This messes with time.
-        .add_systems(Startup, setup)
-        // .add_systems(FixedUpdate, swap_tiles)
-        // .add_systems(FixedUpdate, animate_stuff)
+        .init_state::<AppState>()
+        .add_systems(OnEnter(AppState::Setup), load_textures)
+        .add_systems(Update, check_textures.run_if(in_state(AppState::Setup)))
+        .add_systems(OnEnter(AppState::Finished), setup)
+        // .add_systems(Startup, (
+        //     load_textures.before(setup),
+        //     setup.after(load_textures)
+        // ))
         .add_systems(FixedUpdate, animate_stuff)
-        .add_systems(FixedUpdate, key_trigger_animation)
+        // .add_systems(FixedUpdate, animate_all)
+        // .add_systems(FixedUpdate, key_trigger_animation)
         .run();
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, States)]
+enum AppState {
+    #[default]
+    Setup,
+    Finished,
+}
+fn check_textures(
+    mut next_state: ResMut<NextState<AppState>>,
+    rpg_sprite_folder: Res<SmallMosterFolder>,
+    mut events: EventReader<AssetEvent<LoadedFolder>>,
+) {
+    // Advance the `AppState` once all sprite handles have been loaded by the `AssetServer`
+    for event in events.read() {
+        if event.is_loaded_with_dependencies(&rpg_sprite_folder.0) {
+            next_state.set(AppState::Finished);
+        }
+    }
 }
 // const ATLAS_FILE: &str = "Cave Tiles.png";
 // const ATLAS_FILE: &str = "Jotem spritesheet.png";
 const ATLAS_FILE_IDLE: &str = r"PenUsbMic\Small Monster\small moidle.png";
 const ATLAS_FILE_WALK: &str = r"PenUsbMic\Small Monster\small morun.png";
 const ATLAS_FILE_ATTACK: &str = r"PenUsbMic\Small Monster\attack.png";
-pub fn setup(mut commands: Commands, assets: Res<AssetServer>) {
+const SOURCE_FOLDER: &str = r"test_images";
+#[derive(Resource, Default,Debug)]
+pub struct SmallMosterFolder(Handle<LoadedFolder>);
+pub fn load_textures(mut commands: Commands, assets: Res<AssetServer>){
+    info!("Load textures");
+    commands.insert_resource(SmallMosterFolder(assets.load_folder(SOURCE_FOLDER)));
+}
+
+/// Takes the files in the folder, in order, and adds them to an atlas.
+/// NOTE: Does not work well for sprite-sheets.
+pub fn build_atlas_from_folder_of_frames(folder: &LoadedFolder, textures: &mut ResMut<Assets<Image>>) -> (TextureAtlasLayout, TextureAtlasSources, Handle<Image>){
+    let mut atlas_builder = TextureAtlasBuilder::default();
+
+    for handle in folder.handles.iter(){
+        info!("Handle from folders: {}", handle.path().unwrap());
+        let Ok(id) = handle.id().try_typed::<Image>() else{
+            warn!("Wrong type for {handle:?}: {:?}", handle.path().unwrap());
+            continue;
+        };
+        let Some(texture) = textures.get(id) else{
+            warn!("Missing image for {:?}", handle.path().unwrap());
+            continue;
+        };
+
+        atlas_builder.add_texture(Some(id), texture);
+    }
+
+
+    let (texture_atlas_layout, texture_atlas_sources, texture_atlas_image) = atlas_builder.build().unwrap();
+    let texture_atlas_image_handle = textures.add(texture_atlas_image);
+    (texture_atlas_layout, texture_atlas_sources, texture_atlas_image_handle)
+}
+/// Takes the files in the folder, in order, and adds them to an atlas.
+/// NOTE: Does not work well for sprite-sheets.
+pub fn build_atlas_from_folder_of_spritesheets(assets: &mut Res<AssetServer>, folder: &LoadedFolder, textures: &mut ResMut<Assets<Image>>) -> (TextureAtlasLayout, TextureAtlasSources, Handle<Image>){
+    let mut atlas_builder = TextureAtlasBuilder::default();
+
+    for handle in folder.handles.iter(){
+        info!("Handle from folders: {}", handle.path().unwrap());
+        let Ok(id) = handle.id().try_typed::<Image>() else{
+            warn!("Wrong type for {handle:?}: {:?}", handle.path().unwrap());
+            continue;
+        };
+        let Some(texture) = textures.get(id) else{
+            warn!("Missing image for {:?}", handle.path().unwrap());
+            continue;
+        };
+        let a = TextureAtlasLayout::from_grid(UVec2::new(28,39), 1, 6, None, None);
+        let b = TextureAtlas{ layout: assets.add(a), index: 0 };
+        
+        atlas_builder.add_texture(Some(id), texture);
+    }
+    
+
+    let (texture_atlas_layout, texture_atlas_sources, texture_atlas_image) = atlas_builder.build().unwrap();
+    let texture_atlas_image_handle = textures.add(texture_atlas_image);
+    (texture_atlas_layout, texture_atlas_sources, texture_atlas_image_handle)
+}
+pub fn setup(mut commands: Commands, assets: Res<AssetServer>, mut textures: ResMut<Assets<Image>>, loaded_folders: Res<'_, Assets<LoadedFolder>>, smf: Res<SmallMosterFolder>) {
+    info!("Setup.");
     commands.spawn((MyCamera, Transform::from_xyz(0.0, 0.0, 0.0)));
-    let textue_atlas_layout = assets.add(TextureAtlasLayout::from_grid(
-        UVec2::new(28, 39),
-        // UVec2::new(234, 39),
-        1,
-        6,
-        None, //Some(UVec2::new(234-82, 0)),
-        None,
-    ));
-    let animation_config = AnimationConfig::new(0, 5, 10);
-    let texture_atlas = TextureAtlas {
-        layout: textue_atlas_layout,
-        index: animation_config.first_sprite_index,
-    };
-    let idle_sprite = Sprite {
-        image: assets.load(ATLAS_FILE_IDLE),
-        texture_atlas: Some(texture_atlas.clone()),
-        ..default()
-    };
-    let idle_bundle = (
-        idle_sprite,
-        animation_config.clone(),
-        Transform::from_translation(Vec3::new(-75.0, 0.0, 0.0)).with_scale(Vec3::splat(3.0)),
-        Visibility::Visible,
-        SyncToRenderWorld,
-        MossMonsterIdle,
-    );
-    // commands.spawn(idle_bundle);
+    println!("{smf:?}");
+    let smf_handle = &smf.0;
+    let loaded_folder = loaded_folders.get(smf_handle).unwrap();
 
-    let walking_sprite = Sprite {
-        image: assets.load(ATLAS_FILE_WALK),
-        texture_atlas: Some(texture_atlas.clone()),
-        ..default()
+    let (texture_atlas_layout, _texture_atlas_sources, texture_atlas_image_handle) = build_atlas_from_folder_of_frames(loaded_folder, &mut textures);
+    // let texture_atlas_layout_adjusted = TextureAtlasLayout::from_grid(UVec2::new(28,39), 5, 13, None, None);
+    // texture_atlas_layout.
+    println!("texture_atlas_layout: {texture_atlas_layout:?}");
+    let atlas = TextureAtlas{
+        layout: assets.add(texture_atlas_layout),
+        index: 2,
     };
-    let walking_bundle = (
-        walking_sprite,
-        animation_config.clone(),
-        Transform::from_translation(Vec3::new(75.0, 0.0, 0.0)).with_scale(Vec3::splat(3.0)),
-        Visibility::Visible,
-        SyncToRenderWorld,
-        MossMonsterWalk,
-    );
-    // commands.spawn(walking_bundle);
+    let sprite = Sprite::from_atlas_image(texture_atlas_image_handle, atlas);
+    // commands.spawn((sprite.clone(),Visibility::Visible));
 
-    let var_sprite = Sprite {
-        image: assets.load(ATLAS_FILE_IDLE),
-        texture_atlas: Some(texture_atlas),
-        ..default()
-    };
+    // let sprite_two = Sprite::from_image(assets.load(ATLAS_FILE_ATTACK));
+    // commands.spawn((sprite_two,Visibility::Visible));
+
+    let animation_config = AnimationConfig::new(0, 9, 30);
     let variation_bundle = (
-        var_sprite,
+        sprite,
         animation_config,
         Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)).with_scale(Vec3::splat(3.0)),
         Visibility::Visible,
