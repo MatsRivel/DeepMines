@@ -1,9 +1,13 @@
 mod pos;
-use std::{any::{Any, TypeId}, time::Duration};
+use std::time::Duration;
 
 use avian2d::prelude::*;
 use bevy::{
-    asset::{ErasedAssetLoader, LoadedFolder}, image::{CompressedImageFormats, ImageLoader}, input::keyboard::KeyboardInput, prelude::*, render::{render_resource::TextureFormat, sync_world::SyncToRenderWorld}, window::WindowResolution
+    asset::{ErasedAssetLoader, LoadedFolder},
+    input::keyboard::KeyboardInput,
+    prelude::*,
+    render::sync_world::SyncToRenderWorld,
+    window::WindowResolution,
 };
 use bevy_tnua::prelude::*;
 use bevy_tnua_avian2d::TnuaAvian2dPlugin;
@@ -73,25 +77,28 @@ const ATLAS_FILE_IDLE: &str = r"PenUsbMic\Small Monster\small moidle.png";
 const ATLAS_FILE_WALK: &str = r"PenUsbMic\Small Monster\small morun.png";
 const ATLAS_FILE_ATTACK: &str = r"PenUsbMic\Small Monster\attack.png";
 const SOURCE_FOLDER: &str = r"test_images";
-#[derive(Resource, Default,Debug)]
+#[derive(Resource, Default, Debug)]
 pub struct SmallMosterFolder(Handle<LoadedFolder>);
-pub fn load_textures(mut commands: Commands, assets: Res<AssetServer>){
+pub fn load_textures(mut commands: Commands, assets: Res<AssetServer>) {
     info!("Load textures");
     commands.insert_resource(SmallMosterFolder(assets.load_folder(SOURCE_FOLDER)));
 }
 
 /// Takes the files in the folder, in order, and adds them to an atlas.
 /// NOTE: Does not work well for sprite-sheets.
-pub fn build_atlas_from_folder_of_frames(folder: &LoadedFolder, textures: &mut ResMut<Assets<Image>>) -> (TextureAtlasLayout, TextureAtlasSources, Handle<Image>){
+pub fn build_atlas_from_folder_of_frames(
+    folder: &LoadedFolder,
+    textures: &mut ResMut<Assets<Image>>,
+) -> (TextureAtlasLayout, TextureAtlasSources, Handle<Image>) {
     let mut atlas_builder = TextureAtlasBuilder::default();
 
-    for handle in folder.handles.iter(){
+    for handle in folder.handles.iter() {
         info!("Handle from folders: {}", handle.path().unwrap());
-        let Ok(id) = handle.id().try_typed::<Image>() else{
+        let Ok(id) = handle.id().try_typed::<Image>() else {
             warn!("Wrong type for {handle:?}: {:?}", handle.path().unwrap());
             continue;
         };
-        let Some(texture) = textures.get(id) else{
+        let Some(texture) = textures.get(id) else {
             warn!("Missing image for {:?}", handle.path().unwrap());
             continue;
         };
@@ -99,49 +106,71 @@ pub fn build_atlas_from_folder_of_frames(folder: &LoadedFolder, textures: &mut R
         atlas_builder.add_texture(Some(id), texture);
     }
 
-
-    let (texture_atlas_layout, texture_atlas_sources, texture_atlas_image) = atlas_builder.build().unwrap();
+    let (texture_atlas_layout, texture_atlas_sources, texture_atlas_image) =
+        atlas_builder.build().unwrap();
     let texture_atlas_image_handle = textures.add(texture_atlas_image);
-    (texture_atlas_layout, texture_atlas_sources, texture_atlas_image_handle)
+    (
+        texture_atlas_layout,
+        texture_atlas_sources,
+        texture_atlas_image_handle,
+    )
 }
 /// Takes the files in the folder, in order, and adds them to an atlas.
 /// NOTE: Does not work well for sprite-sheets.
-pub fn build_atlas_from_folder_of_spritesheets(assets: &mut Res<AssetServer>, folder: &LoadedFolder, textures: &mut ResMut<Assets<Image>>) -> (TextureAtlasLayout, TextureAtlasSources, Handle<Image>){
+pub fn build_atlas_from_folder_of_spritesheets(
+    assets: &mut Res<AssetServer>,
+    folder: &LoadedFolder,
+    textures: &mut ResMut<Assets<Image>>,
+) -> (TextureAtlasLayout, TextureAtlasSources, Handle<Image>) {
     let mut atlas_builder = TextureAtlasBuilder::default();
 
-    for handle in folder.handles.iter(){
+    for handle in folder.handles.iter() {
         info!("Handle from folders: {}", handle.path().unwrap());
-        let Ok(id) = handle.id().try_typed::<Image>() else{
+        let Ok(id) = handle.id().try_typed::<Image>() else {
             warn!("Wrong type for {handle:?}: {:?}", handle.path().unwrap());
             continue;
         };
-        let Some(texture) = textures.get(id) else{
+        let Some(texture) = textures.get(id) else {
             warn!("Missing image for {:?}", handle.path().unwrap());
             continue;
         };
-        let a = TextureAtlasLayout::from_grid(UVec2::new(28,39), 1, 6, None, None);
-        let b = TextureAtlas{ layout: assets.add(a), index: 0 };
-        
+        let a = TextureAtlasLayout::from_grid(UVec2::new(28, 39), 1, 6, None, None);
+        let b = TextureAtlas {
+            layout: assets.add(a),
+            index: 0,
+        };
+
         atlas_builder.add_texture(Some(id), texture);
     }
-    
 
-    let (texture_atlas_layout, texture_atlas_sources, texture_atlas_image) = atlas_builder.build().unwrap();
+    let (texture_atlas_layout, texture_atlas_sources, texture_atlas_image) =
+        atlas_builder.build().unwrap();
     let texture_atlas_image_handle = textures.add(texture_atlas_image);
-    (texture_atlas_layout, texture_atlas_sources, texture_atlas_image_handle)
+    (
+        texture_atlas_layout,
+        texture_atlas_sources,
+        texture_atlas_image_handle,
+    )
 }
-pub fn setup(mut commands: Commands, assets: Res<AssetServer>, mut textures: ResMut<Assets<Image>>, loaded_folders: Res<'_, Assets<LoadedFolder>>, smf: Res<SmallMosterFolder>) {
+pub fn setup(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    mut textures: ResMut<Assets<Image>>,
+    loaded_folders: Res<'_, Assets<LoadedFolder>>,
+    smf: Res<SmallMosterFolder>,
+) {
     info!("Setup.");
     commands.spawn((MyCamera, Transform::from_xyz(0.0, 0.0, 0.0)));
     println!("{smf:?}");
     let smf_handle = &smf.0;
     let loaded_folder = loaded_folders.get(smf_handle).unwrap();
 
-    let (texture_atlas_layout, _texture_atlas_sources, texture_atlas_image_handle) = build_atlas_from_folder_of_frames(loaded_folder, &mut textures);
+    let (texture_atlas_layout, _texture_atlas_sources, texture_atlas_image_handle) =
+        build_atlas_from_folder_of_frames(loaded_folder, &mut textures);
     // let texture_atlas_layout_adjusted = TextureAtlasLayout::from_grid(UVec2::new(28,39), 5, 13, None, None);
     // texture_atlas_layout.
     println!("texture_atlas_layout: {texture_atlas_layout:?}");
-    let atlas = TextureAtlas{
+    let atlas = TextureAtlas {
         layout: assets.add(texture_atlas_layout),
         index: 2,
     };
@@ -256,6 +285,12 @@ impl MossMonsterState {
 pub struct MossMonsterVary {
     state: MossMonsterState,
 }
+impl Default for MossMonsterVary {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MossMonsterVary {
     pub fn new() -> Self {
         Self {
