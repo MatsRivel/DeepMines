@@ -2,7 +2,7 @@ mod pos;
 mod animation_manager;
 
 use std::time::Duration;
-use animation_manager::{FolderOfImagesCollection,load_image_folders};
+use animation_manager::{build_animation_from_atlas, build_atlas_from_folder_of_frames, check_whether_image_folders_are_loaded, load_image_folders, AnimationConfig, FolderOfImagesCollection, ImageLoadingState, MetaTextureAtlas};
 use avian2d::prelude::*;
 use bevy::{
     asset::{ErasedAssetLoader, LoadedFolder},
@@ -48,10 +48,10 @@ fn main() {
         .insert_resource(ClearColor(SKY_COLOR))
         .init_gizmo_group::<MyGizmos>()
         .insert_resource(Time::<Fixed>::from_hz(30.0)) //This messes with time.
-        .init_state::<AppState>()
-        .add_systems(OnEnter(AppState::Setup), crate::animation_manager::load_image_folders)
-        .add_systems(Update, check_textures.run_if(in_state(AppState::Setup)))
-        .add_systems(OnEnter(AppState::Finished), setup)
+        .init_state::<ImageLoadingState>()
+        .add_systems(OnEnter(ImageLoadingState::Setup), crate::animation_manager::load_image_folders)
+        .add_systems(Update, check_whether_image_folders_are_loaded.run_if(in_state(ImageLoadingState::Setup)))
+        .add_systems(OnEnter(ImageLoadingState::Finished), setup)
         // .add_systems(Startup, (
         //     load_textures.before(setup),
         //     setup.after(load_textures)
@@ -59,42 +59,13 @@ fn main() {
         .add_systems(FixedUpdate, animate_stuff)
         // .add_systems(FixedUpdate, animate_all)
         // .add_systems(FixedUpdate, key_trigger_animation)
+        .add_systems(FixedUpdate, animation_trigger_demo)
         .run();
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, States)]
-enum AppState {
-    #[default]
-    Setup,
-    Finished,
-}
-fn check_textures(
-    mut next_state: ResMut<NextState<AppState>>,
-    rpg_sprite_folder: Res<FolderOfImagesCollection>,
-    mut events: EventReader<AssetEvent<LoadedFolder>>,
-) {
-    // Advance the `AppState` once all sprite handles have been loaded by the `AssetServer`
-    for handle in rpg_sprite_folder.inner().iter(){
-        for event in events.read() {
-            if event.is_loaded_with_dependencies(handle.id()) {
-                next_state.set(AppState::Finished);
-            }
-        }
-    }
-}
-
-// #[derive(Resource, Default, Debug)]
-// pub struct SmallMosterFolder(Vec<Handle<LoadedFolder>>);
-// pub fn load_textures(mut commands: Commands, assets: Res<AssetServer>) {
-//     info!("Load textures");
-//     let paths = [SOURCE_FOLDER1,SOURCE_FOLDER2];
-//     let folder_handles = paths.iter().map(|&path|assets.load_folder(path)).collect();
-//     commands.insert_resource(SmallMosterFolder(folder_handles));
-// }
-
 /// Takes the files in the folder, in order, and adds them to an atlas.
 /// NOTE: Does not work well for sprite-sheets.
-pub fn build_atlas_from_folder_of_frames(
+pub fn build_atlas_from_folder_of_frames_old(
     folder1: &LoadedFolder,
     folder2: &LoadedFolder,
     textures: &mut ResMut<Assets<Image>>,
@@ -206,40 +177,9 @@ pub fn setup(
 ) {
     info!("Setup.");
     commands.spawn((MyCamera, Transform::from_xyz(0.0, 0.0, 0.0)));
-    println!("{folder_handles:?}");
-    let smf1 = folder_handles.inner()[0].id();
-    let smf2 = folder_handles.inner()[1].id();
-    let loaded_folder = loaded_folders.get(smf1).unwrap();
-    let loaded_folder2 = loaded_folders.get(smf2).unwrap();
-
-    let (texture_atlas_layout, _texture_atlas_sources, texture_atlas_image_handle) =
-        build_atlas_from_folder_of_frames(loaded_folder, loaded_folder2, &mut textures);
-    // let texture_atlas_layout_adjusted = TextureAtlasLayout::from_grid(UVec2::new(28,39), 5, 13, None, None);
-    // texture_atlas_layout.
-    // println!("texture_atlas_layout: {texture_atlas_layout:#?}");
-    println!("{_texture_atlas_sources:#?}");
-    let atlas = TextureAtlas {
-        layout: assets.add(texture_atlas_layout),
-        index: 0,
-    };
-    let sprite = Sprite::from_atlas_image(texture_atlas_image_handle, atlas);
-    // commands.spawn((sprite.clone(),Visibility::Visible));
-
-    // let sprite_two = Sprite::from_image(assets.load(ATLAS_FILE_ATTACK));
-    // commands.spawn((sprite_two,Visibility::Visible));
-
-    let first_frame = 0;
-    let animation_length = 18;
-    let animation_config = AnimationConfig::new(first_frame, first_frame+animation_length-1, 10);
-    let variation_bundle = (
-        sprite,
-        animation_config,
-        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)).with_scale(Vec3::splat(10.0)),
-        Visibility::Visible,
-        SyncToRenderWorld,
-        MossMonsterVary::new(),
-    );
-    commands.spawn(variation_bundle);
+    let folders = folder_handles.inner().iter().filter_map(|handle| loaded_folders.get(handle)).enumerate().collect();
+    let meta = build_atlas_from_folder_of_frames(folders, &mut textures);
+    build_animation_from_atlas(&mut commands, &assets, meta);
 }
 
 pub fn key_trigger_animation(
@@ -274,19 +214,61 @@ pub fn key_trigger_animation(
     }
 }
 
+
+pub fn animation_trigger_demo(
+    mut commands: Commands,
+    mut event_reader: EventReader<KeyboardInput>,
+    entity_query: Query<(Entity, &mut Sprite, &MetaTextureAtlas), (With<MossMonsterVary>, With<AnimationConfig>)>,
+    assets: Res<AssetServer>,
+) {
+    for kb in event_reader.read() {
+        let kb_code = kb.key_code;
+        let (entity, sprite, meta_atlas) = entity_query.single();
+        if let Some(texture_atlas) = &sprite.texture_atlas {
+            // This controls when to change sprites and when to flip sprites.
+            let flip = kb_code == KeyCode::KeyS;
+            let mut index = 0;
+            if kb_code == KeyCode::Space{
+                index = 1;
+            }
+            let (_,animation_config) = meta_atlas.animation_congfigs[index].clone();
+            let assets_handle = meta_atlas.image_handle.clone();
+            let new_sprite = Sprite {
+                image: assets_handle,
+                texture_atlas: Some(texture_atlas.clone()),
+                flip_x: flip,
+                ..default()
+            };
+            commands.entity(entity).remove::<Sprite>();
+            commands.entity(entity).insert(new_sprite);
+            commands.entity(entity).remove::<AnimationConfig>();
+            commands.entity(entity).insert(animation_config);
+        }
+    }
+}
+
 pub fn animate_stuff(time: Res<Time>, mut query: Query<(&mut AnimationConfig, &mut Sprite)>) {
     for (mut config, mut sprite) in &mut query {
         // How long the current sprite has been active.
         config.frame_timer.tick(time.delta());
-
         // If it has ben displayed for the expected number of frames:
+        // println!("{:?}",config.frame_timer);
         if config.frame_timer.just_finished() {
             if let Some(atlas) = &mut sprite.texture_atlas {
-                if atlas.index != config.last_sprite_index {
+                let last_idx = config.last_sprite_index;
+                let first_idx = config.first_sprite_index;
+                let mut next_frame_index = atlas.index +1;
+
+                if next_frame_index <= last_idx || true{
+                    println!("### A");
                     config.frame_timer = AnimationConfig::timer_from_fps(config.fps);
                 }
-                atlas.index =
-                    (1 + atlas.index - config.first_sprite_index) % (config.last_sprite_index)
+                if next_frame_index > last_idx || next_frame_index < first_idx{
+                    println!("### B");
+                    next_frame_index = first_idx;
+                }
+                println!("{first_idx} <= {next_frame_index} <= {last_idx}");
+                atlas.index = next_frame_index;
             }
         }
     }
@@ -361,28 +343,7 @@ impl MossMonsterVary {
     }
 }
 
-#[derive(Component, Clone)]
-pub struct AnimationConfig {
-    first_sprite_index: usize,
-    last_sprite_index: usize,
-    fps: u8,
-    frame_timer: Timer,
-}
 
-impl AnimationConfig {
-    fn new(first: usize, last: usize, fps: u8) -> Self {
-        Self {
-            first_sprite_index: first,
-            last_sprite_index: last,
-            fps,
-            frame_timer: Self::timer_from_fps(fps),
-        }
-    }
-
-    fn timer_from_fps(fps: u8) -> Timer {
-        Timer::new(Duration::from_secs_f32(1.0 / (fps as f32)), TimerMode::Once)
-    }
-}
 
 mod tile {
     use super::*;
