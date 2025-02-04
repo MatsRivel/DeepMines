@@ -112,75 +112,7 @@ pub fn build_atlas_from_folder_of_frames_old(
         texture_atlas_image_handle,
     )
 }
-/// Takes the files in the folder, in order, and adds them to an atlas.
-/// NOTE: Does not work well for sprite-sheets.
-pub fn build_atlas_from_folder_of_spritesheets(
-    assets: &mut Res<AssetServer>,
-    folder1: &LoadedFolder,
-    folder2: &LoadedFolder,
-    textures: &mut ResMut<Assets<Image>>,
-) -> (TextureAtlasLayout, TextureAtlasSources, Handle<Image>) {
-    let mut atlas_builder = TextureAtlasBuilder::default();
 
-    for handle in folder1.handles.iter() {
-        info!("Handle from folders: {}", handle.path().unwrap());
-        let Ok(id) = handle.id().try_typed::<Image>() else {
-            warn!("Wrong type for {handle:?}: {:?}", handle.path().unwrap());
-            continue;
-        };
-        let Some(texture) = textures.get(id) else {
-            warn!("Missing image for {:?}", handle.path().unwrap());
-            continue;
-        };
-        // let a = TextureAtlasLayout::from_grid(UVec2::new(28, 39), 1, 6, None, None);
-        // let b = TextureAtlas {
-        //     layout: assets.add(a),
-        //     index: 0,
-        // };
-        atlas_builder.add_texture(Some(id), texture);
-    }
-        
-    
-    for handle in folder2.handles.iter() {
-        info!("Handle from folders: {}", handle.path().unwrap());
-        let Ok(id) = handle.id().try_typed::<Image>() else {
-            warn!("Wrong type for {handle:?}: {:?}", handle.path().unwrap());
-            continue;
-        };
-        let Some(texture) = textures.get(id) else {
-            warn!("Missing image for {:?}", handle.path().unwrap());
-            continue;
-        };
-        // let a = TextureAtlasLayout::from_grid(UVec2::new(28, 39), 1, 6, None, None);
-        // let b = TextureAtlas {
-        //     layout: assets.add(a),
-        //     index: 0,
-        atlas_builder.add_texture(Some(id), texture);
-    }
-    
-    let (texture_atlas_layout, texture_atlas_sources, texture_atlas_image) =
-        atlas_builder.build().unwrap();
-    let texture_atlas_image_handle = textures.add(texture_atlas_image);
-    (
-        texture_atlas_layout,
-        texture_atlas_sources,
-        texture_atlas_image_handle,
-    )
-}
-
-pub fn setup(
-    mut commands: Commands,
-    assets: Res<AssetServer>,
-    mut textures: ResMut<Assets<Image>>,
-    loaded_folders: Res<'_, Assets<LoadedFolder>>,
-    folder_handles: Res<FolderOfImagesCollection>,
-) {
-    info!("Setup.");
-    commands.spawn((MyCamera, Transform::from_xyz(0.0, 0.0, 0.0)));
-    let folders = folder_handles.inner().iter().filter_map(|handle| loaded_folders.get(handle)).enumerate().collect();
-    let meta = build_atlas_from_folder_of_frames(folders, &mut textures);
-    build_animation_from_atlas(&mut commands, &assets, meta);
-}
 
 pub fn key_trigger_animation(
     mut commands: Commands,

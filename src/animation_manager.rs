@@ -59,11 +59,27 @@ impl AnimationConfig {
 pub struct MetaTextureAtlas{
     pub animation_congfigs: Vec<(FolderId,AnimationConfig)>,
     pub atlas_layout: TextureAtlasLayout, 
-    pub atlas_sources: TextureAtlasSources,
+    // pub atlas_sources: TextureAtlasSources,
     pub image_handle: Handle<Image>
 }
 
 const ANIMATION_FPS: u8 = 10;
+
+pub fn build_atlas_from_spritesheet(textures: &mut ResMut<Assets<Image>>)->MetaTextureAtlas{
+    let mut animation_configs = vec![];
+    let mut current_max_idx = 0;
+    let texture_atlas_layour = TextureAtlasLayout::from_grid(UVec2::new(116/5,80), 5, 1, 0, 0);
+    let mut atlas = TextureAtlas{ layout: texture_atlas_layour, index: 0 };
+    let meta_atlas = MetaTextureAtlas{
+        animation_congfigs: todo!(),
+        atlas_layout: todo!(),
+        image_handle: todo!(),
+    };
+    todo!()
+}
+
+
+
 type FolderId = usize;
 type FolderLength = usize;
 pub fn build_atlas_from_folder_of_frames(folders: Vec::<(FolderId, &LoadedFolder)>,textures: &mut ResMut<Assets<Image>>)->MetaTextureAtlas{
@@ -95,7 +111,7 @@ pub fn build_atlas_from_folder_of_frames(folders: Vec::<(FolderId, &LoadedFolder
     MetaTextureAtlas{   
         animation_congfigs: animation_configs,
         atlas_layout: texture_atlas_layout,
-        atlas_sources: texture_atlas_sources,
+        // atlas_sources: texture_atlas_sources,
         image_handle: texture_atlas_image_handle,
     }
 }
